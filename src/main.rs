@@ -10,54 +10,36 @@ struct Machine {
 }
 
 impl Machine {
-    fn new() -> Machine {
-        Machine {
-            pc: 0,
-            ptr: 0,
-            mem: Vec::new(),
-            code: Vec::new(),
-            map: HashMap::new()
-        }
-    }
-
-    fn run(&mut self, code: &[u8]) -> Option<String> {
-        self.pc = 0;
-        self.ptr = 0;
-        self.mem.clear();
-        self.code = Vec::from(code);
-        self.map = match self.init_map() {
+    fn run(code: &[u8]) -> Option<String> {
+        let map = match Machine::init_map(code) {
             Some(map) => { map },
             None => { return Some(String::from("Unclosed brackets.")); }
         };
+        let mut machine = Machine {
+            pc: 0,
+            ptr: 0,
+            mem: vec![0],
+            code: Vec::from(code),
+            map: map
+        };
 
-        while self.pc < self.code.len() {
-            if self.mem.len() <= self.ptr { self.mem.push(0); }
-
-            match self.code[self.pc] {
-                b'>' => { self.ptr += 1; },
-                b'<' => { self.ptr -= 1; },
-                b'+' => { self.mem[self.ptr] += 1; },
-                b'-' => { self.mem[self.ptr] -= 1; },
-                b'.' => { print!("{}", self.mem[self.ptr] as char); },
-                b',' => { self.mem[self.ptr] = getchar(); },
-                b'[' | b']' => {},
-                c => { return Some(format!("Unexpected charanter {}.", c as char)); }
+        while machine.pc < machine.code.len() {
+            match machine.step() {
+                Some(s) => { return Some(s); }
+                None => {}
             }
 
-            self.pc = match self.next_pc() {
-                Some(pc) => { pc },
-                None => { return Some(String::from("Invalid PC.")); }
-            }
+            machine.pc = machine.next();
         }
 
         None
     }
 
-    fn init_map(&self) -> Option<HashMap<usize, usize>> {
+    fn init_map(code: &[u8]) -> Option<HashMap<usize, usize>> {
         let mut map = HashMap::new();
         let mut stk = Vec::new();
-        for i in 0..self.code.len() {
-            match self.code[i] {
+        for i in 0..code.len() {
+            match code[i] {
                 b'[' => { stk.push(i); },
                 b']' => {
                     match stk.pop() {
@@ -75,15 +57,28 @@ impl Machine {
         if stk.is_empty() { Some(map) } else { None }
     }
 
-    fn next_pc(&self) -> Option<usize> {
+    fn step(&mut self) -> Option<String> {
         match self.code[self.pc] {
-            b'[' => {
-                if self.mem[self.ptr] == 0 { self.map.get(&self.pc).cloned() } else { Some(self.pc + 1) }
+            b'>' => {
+                self.ptr += 1;
+                if self.mem.len() <= self.ptr { self.mem.push(0); }
             },
-            b']' => {
-                if self.mem[self.ptr] != 0 { self.map.get(&self.pc).cloned() } else { Some(self.pc + 1) }
-            },
-            _ => { Some(self.pc + 1) }
+            b'<' => { self.ptr -= 1; },
+            b'+' => { self.mem[self.ptr] += 1; },
+            b'-' => { self.mem[self.ptr] -= 1; },
+            b'.' => { print!("{}", self.mem[self.ptr] as char); },
+            b',' => { self.mem[self.ptr] = getchar(); },
+            b'[' | b']' => {},
+            c => { return Some(format!("Unexpected charanter '{}'.", c as char)); }
+        }
+        None
+    }
+
+    fn next(&self) -> usize {
+        match self.code[self.pc] {
+            b'[' => { if self.mem[self.ptr] == 0 { self.map[&self.pc] } else { self.pc + 1 } },
+            b']' => { if self.mem[self.ptr] != 0 { self.map[&self.pc] } else { self.pc + 1 } },
+            _ => { self.pc + 1 }
         }
     }
 }
@@ -95,8 +90,6 @@ fn getchar() -> u8 {
 }
 
 fn main() {
-    let mut machine = Machine::new();
-
     loop {
         print!("bf> ");
         io::stdout().flush().unwrap();
@@ -112,8 +105,8 @@ fn main() {
             Err(e) => println!("{}", e)
         }
 
-        match machine.run(line.trim().as_bytes()) {
-            Some(s) => { println!("{}", s); },
+        match Machine::run(line.trim().as_bytes()) {
+            Some(s) => { println!("Error: {}", s); },
             None => {}
         }
     }
